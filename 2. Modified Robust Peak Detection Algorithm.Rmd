@@ -1,0 +1,61 @@
+---
+title: "Modified Robust Peak Detection Algorithm"
+authors: "Hannah Lee"
+date: "6/5/2024"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '.')
+
+library(dplyr)
+library(stats)
+library(tseries)
+
+setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
+```
+
+We implement and modify the robust peak detection algorithm (using z-scores) to identify spikes within a dataset. Both spikes and dips receive an influence. The lag represents the number of historical data considered, which consists of days up to, but not including, the current day. 
+
+```{r}
+# https://stackoverflow.com/questions/22583391/peak-signal-detection-in-realtime-timeseries-data/22640362#22640362
+
+daily_overdose_deaths_ts <- ts(daily_overdose_deaths_ma$Total_Overdose_Deaths)
+
+ThresholdingAlgo <- function(y,lag,threshold,influence) {
+  signals <- rep(0,length(y))
+  filteredY <- y[1:lag]
+  avgFilter <- NULL
+  stdFilter <- NULL
+  avgFilter[lag] <- mean(y[1:lag], na.rm=TRUE)
+  stdFilter[lag] <- sd(y[1:lag], na.rm=TRUE)
+  for (i in (lag+1):length(y)){
+    if (abs(y[i]-avgFilter[i-1]) > threshold*stdFilter[i-1]) {
+      if (y[i] > avgFilter[i-1]) {
+        signals[i] <- 1;
+      } else {
+        signals[i] <- -1;
+ 
+      }
+      filteredY[i] <- influence*y[i]+(1-influence)*filteredY[i-1]
+    } else {
+      signals[i] <- 0
+      filteredY[i] <- y[i]
+    }
+    avgFilter[i] <- mean(filteredY[(i-lag+1):i], na.rm=TRUE)
+    stdFilter[i] <- sd(filteredY[(i-lag+1):i], na.rm=TRUE)
+  }
+  return(list("signals"=signals,"avgFilter"=avgFilter,"stdFilter"=stdFilter))
+}
+
+# Modify parameters 
+lag       <- 30
+threshold <- 2.5
+influence <- 0.3
+
+
+y <- daily_overdose_deaths_ma$Total_Overdose_Deaths
+result <- ThresholdingAlgo(y,lag,threshold,influence)
+```
