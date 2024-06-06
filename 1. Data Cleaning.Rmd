@@ -1,0 +1,38 @@
+---
+title: "Massachusetts Vital Statistics Data Cleaning"
+authors: "Hannah Lee"
+date: "6/5/2024"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+
+setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
+```
+
+Clean MA Vital Stats data to get aggregated daily counts of overdose deaths
+```{r}
+# Obtain daily total overdose deaths in Massachusetts
+MA_ODs_deaths_by_day <- ODs_drug_categories %>%  
+  group_by(DOD_4_FD) %>% 
+  summarize("Total_Overdose_Deaths" = n())
+
+MA_ODs_deaths_by_day$DOD_4_FD <- as.Date(MA_ODs_deaths_by_day$DOD_4_FD)
+
+# Create a sequence of dates from the minimum to maximum date
+all_dates <- seq(as.Date("2000-01-01"), as.Date("2023-06-04"), by = "1 day")
+complete_data <- data.frame(DOD_4_FD = all_dates)
+
+daily_overdose_deaths_ma <- merge(complete_data, MA_ODs_deaths_by_day, by = "DOD_4_FD", all.x = TRUE)
+
+# Replace NAs with zero in the total overdose count column (there were no deaths reported that day)
+daily_overdose_deaths_ma$Total_Overdose_Deaths[is.na(daily_overdose_deaths_ma$Total_Overdose_Deaths)] <- 0
+
+# add year column to make it easy to get daily graphs by year
+daily_overdose_deaths_ma$YOD <- format(daily_overdose_deaths_ma$DOD_4_FD, "%Y") 
+daily_overdose_deaths_ma$YOD <- as.numeric(daily_overdose_deaths_ma$YOD)
+```
