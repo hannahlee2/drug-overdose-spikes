@@ -1,0 +1,94 @@
+---
+title: "Detected Spikes Visualization"
+authors: "Hannah Lee and Daniel Otero-Leon"
+date: "6/7/2024"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '.')
+
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+createPlot <- function(data, threshold, lag_days, show_y_axis = TRUE) {
+  # Filter the data based on the threshold and specific lag
+  theData <- data[data$threshold == threshold & data$lag == lag_days,]
+
+  # adding this because in our algorithm, the avgfilter and stdfilter of 'i' corresponds to 'i-1', so for presentation, we must adjust the rows
+  theData$avgFilter <- c(NA, theData$avgFilter[1:(nrow(theData) - 1)])
+  theData$upperThreshold <- c(NA, theData$upperThreshold[1:(nrow(theData) - 1)])
+  theData$spikes<-ifelse(theData$spikes>0,theData$spikes,NA)
+  # Filter for specific months and year
+  filtered_data <- theData %>%
+    filter(year(date) == 2022, month(date) %in% c(11, 12))
+  
+  # Create the plot
+  plot <- ggplot(filtered_data, aes(x = date)) +
+    geom_line(aes(y = y, color = 'Observed Counts')) +
+    geom_point(aes(y = spikes, color = 'Spike'), size = 2) +
+    geom_line(aes(y = avgFilter, color = 'Moving Average')) +
+    geom_line(aes(y = upperThreshold, color = 'Upper Bound')) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.title.x = element_text(margin = margin(t = 10, unit = "pt")),
+          axis.title.y = element_text(margin = margin(r = 10, unit = "pt"))) +
+    scale_color_manual(name = "",
+                       labels = c('Observed Counts', 'Moving Average', 'Upper Bound', 'Spike'),
+                       values = c('Observed Counts' = "grey", 
+                                  'Moving Average' = "lightseagreen", 
+                                  'Upper Bound' = "#9DC183",  
+                                  'Spike' = "red")) +
+    labs(
+      title = paste(lag_days, "-day lag", sep=""),
+      x = "Date",
+      y = ifelse(show_y_axis, "Overdose Deaths", "")
+    ) + 
+    scale_y_continuous(
+      breaks = seq(0, 12, 3),
+      limits = c(-0.5, 12),
+      expand = c(0, 0)  
+    )
+  # Conditionally remove y-axis and y-title
+  if (!show_y_axis) {
+    plot <- plot +
+      theme(axis.text.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.title.y = element_blank())
+  }
+  
+  return(plot)
+}
+```
+
+```{r}
+lags <- c(7, 30, 90)
+show_y_axis_settings <- c(TRUE, FALSE, FALSE) # Control display of y-axis for each plot
+threshold <- 2  
+
+# Create plots with specific settings
+plots <- Map(function(lag, show_y) {
+    createPlot(sensAnalysisYearDays, threshold, lag, show_y)
+}, lags, show_y_axis_settings)
+
+# Extract the legend from the first plot
+legend <- get_legend(plots[[1]] + theme(legend.position = "bottom"))
+
+# Combine plots horizontally without the legends
+combined_plots <- plot_grid(plotlist = plots, align = 'v', nrow = 1, labels = "auto")
+
+detected_spikes <- plot_grid(combined_plots, legend, ncol = 1, rel_heights = c(1, 0.1))
+print(detected_spikes)
+
+ggsave("detected_spikes.jpeg", plot = detected_spikes, width = 11, height = 6, dpi = 1000)
+```
+
