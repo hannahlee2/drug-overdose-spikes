@@ -1,6 +1,6 @@
 ---
 title: "Sensitivity Analyses for Overdose Spikes"
-authors: "Daniel Otero-Leon"
+authors: "Daniel Otero-Leon and Hannah Lee"
 date: "6/7/2024"
 output: html_document
 
@@ -16,6 +16,7 @@ library(progress)
 
 setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
 ```
+
 
 Modified threshold algorithm for sensitivity analysis (adds new outputs)
 ```{r}
@@ -61,66 +62,79 @@ influence<-c(0.3)
 
 
 
-Sensitivity analysis for all years
+Sensitivity analysis by year
 ```{r}
-#This sensitivity analysis groups by all years between 2017 to 2022
-sens_analysis <- function(geographical_data, lag, threshold, influence)
-{
-  
+
+# Sensitivity analysis function
+sens_analysis <- function(geographical_data, lag, threshold, influence) {
   y <- geographical_data$Total_Overdose_Deaths
+  date <- geographical_data$DOD_4_FD
+  years <- as.integer(format(date, "%Y"))
   
-  theResult<-0
-    pb <- progress_bar$new(format = " running [:bar] :percent eta: :eta",total = length(lag), clear = FALSE, width= 60)
-
-
-  for(i in 1:length(lag))
-  {
+  theResult <- NULL
+  
+  pb <- progress_bar$new(format = " running [:bar] :percent eta: :eta", total = length(lag), clear = FALSE, width = 60)
+  
+  for (i in 1:length(lag)) {
     pb$tick()
-    for(j in 1:length(threshold))
-    {
-      for( k in 1:length(influence))
-      {
-        result <- ThresholdingAlgo2(y,lag[i],threshold[j],influence[k])
-        df <- data.frame(date = geographical_data$DOD_4_FD, 
-                         y = y, 
-                         avgFilter = result$avgFilter, 
-                         upperThreshold = result$avgFilter + threshold[j] * result$stdFilter, 
-                         signals = result$signals,
-                         spikes=result$spikes,
-                         dips=result$dips,
-                         YOD = geographical_data$YOD)
-        df$year <- year(df$date)
-        df_modified <- df
-        df_modified$modified_y <- ifelse(df$signals == 0, 0, df$y)
-        df_modified$y_minus_avgFilter_or_zero <- ifelse(df$signals == 0, 0, df$y - df$avgFilter)
-        df_modified$lag<-lag[i]
-        df_modified$threshold<-threshold[j]
-        df_modified$influence<-influence[k]
-        df_modified$percSpike<-ifelse(df_modified$signals==1,df_modified$y_minus_avgFilter_or_zero/df_modified$avgFilter,0)
-        df_modified<-df_modified[df_modified$year>=2017 & df_modified$year<=2022,]
-        df_modified<-df_modified %>%
-          #group_by(year,lag,threshold,influence) %>%
-          group_by(lag,threshold,influence) %>%
-          summarise(Count = sum(y_minus_avgFilter_or_zero > 0),Average_spike=mean(spikes[spikes > 0]),Average_dip=mean(dips[dips>0]),Total_spikes=sum(spikes),Total_deaths=sum(y),Average_per_inc_spike=mean(percSpike[percSpike>0]),Average_diff=mean(y_minus_avgFilter_or_zero[y_minus_avgFilter_or_zero>0]))
-        df_modified$perc_spike_death<-df_modified$Total_spikes/df_modified$Total_deaths
-        if(i==1 & j==1 & k==1)
-        {
-          theResult<-df_modified
+    for (j in 1:length(threshold)) {
+      for (k in 1:length(influence)) {
+        # Run the spike detection algorithm
+        result <- ThresholdingAlgo2(y, lag[i], threshold[j], influence[k])
+        
+        # Prepare the results in a dataframe
+        df <- data.frame(
+          date = date,
+          year = years,
+          y = y,
+          avgFilter = result$avgFilter,
+          upperThreshold = result$avgFilter + threshold[j] * result$stdFilter,
+          signals = result$signals,
+          spikes = result$spikes,
+          dips = result$dips
+        )
+        
+        # Add the difference between deaths and the moving average
+        df$y_minus_avgFilter <- df$y - df$avgFilter
+        
+        df_modified <- df %>%
+          group_by(year) %>%
+          summarise(
+            total_days = n(),  # Total days in the year
+            spike_days = sum(signals == 1),  # Days identified as spikes
+            total_deaths = sum(y),  # Total deaths in the year
+            deaths_in_spikes = sum(spikes),  # Total deaths during spikes
+            avg_diff_in_spikes = mean(y_minus_avgFilter[signals == 1], na.rm = TRUE)  # Average difference for spike days
+          ) %>%
+          mutate(
+            perc_spike_days = (spike_days / total_days) * 100,  # Percentage of days identified as spikes
+            perc_spike_deaths = (deaths_in_spikes / total_deaths) * 100  # Percentage of deaths in spikes
+          )
+        
+        # Add the parameters used
+        df_modified$lag <- lag[i]
+        df_modified$threshold <- threshold[j]
+        df_modified$influence <- influence[k]
+        
+        # Combine results
+        if (is.null(theResult)) {
+          theResult <- df_modified
+        } else {
+          theResult <- bind_rows(theResult, df_modified)
         }
-        else
-        {
-          theResult<-rbind(theResult,df_modified)
-        }   
       }
     }
-    Sys.sleep(1 / 100)
   }
   
-   return(theResult)
-  
+  return(theResult)
 }
 
-sensAnalysis<-sens_analysis(daily_overdose_deaths_ma, lag, threshold, influence)
+# Run the sensitivity analysis
+sensAnalysis <- sens_analysis(daily_overdose_deaths_ma, lag, threshold, influence)
+
+sensAnalysis <- sensAnalysis %>%
+  filter(year >= 2018 & year <= 2023) %>%
+  mutate_if(is.numeric, round, 2)
 ```
 
 ```{r Create tables for the sensitivity analysis for all years - Percentage of deaths in spikes}
@@ -149,60 +163,74 @@ sensAnalysis %>% pivot_wider(names_from = lag,
               values_from = Average_diff, 
               id_cols = threshold)
 ```
- Sensitivity analysis per year output by days
+Sensitivity analysis for all years
 ```{r}
-#This sensitivity analysis groups by all years between 2017 to 2022
-sens_analysis_year_days <- function(geographical_data, lag, threshold, influence)
-{
-  
+# Sensitivity analysis function
+sens_analysis_all_years <- function(geographical_data, lag, threshold, influence) {
   y <- geographical_data$Total_Overdose_Deaths
+  date <- geographical_data$DOD_4_FD
+  years <- as.integer(format(date, "%Y"))
   
-  theResult<-0
-    pb <- progress_bar$new(format = " running [:bar] :percent eta: :eta",total = length(lag), clear = FALSE, width= 60)
-
-
-  for(i in 1:length(lag))
-  {
+  theResult <- NULL
+  
+  pb <- progress_bar$new(format = " running [:bar] :percent eta: :eta", total = length(lag), clear = FALSE, width = 60)
+  
+  for (i in 1:length(lag)) {
     pb$tick()
-    for(j in 1:length(threshold))
-    {
-      for( k in 1:length(influence))
-      {
-        result <- ThresholdingAlgo2(y,lag[i],threshold[j],influence[k])
-        df <- data.frame(date = geographical_data$DOD_4_FD, 
-                         y = y, 
-                         avgFilter = result$avgFilter, 
-                         stdFilter = result$stdFilter,
-                         upperThreshold = result$avgFilter + threshold[j] * result$stdFilter, 
-                         signals = result$signals,
-                         spikes=result$spikes,
-                         dips=result$dips,
-                         YOD = geographical_data$YOD)
-        df$year <- year(df$date)
-        df_modified <- df
-        df_modified$modified_y <- ifelse(df$signals == 0, 0, df$y)
-        df_modified$y_minus_avgFilter_or_zero <- ifelse(df$signals == 0, 0, df$y - df$avgFilter)
-        df_modified$lag<-lag[i]
-        df_modified$threshold<-threshold[j]
-        df_modified$influence<-influence[k]
-        df_modified$percSpike<-ifelse(df_modified$signals==1,df_modified$y_minus_avgFilter_or_zero/df_modified$avgFilter,0)
-        df_modified<-df_modified[df_modified$year>=2017 & df_modified$year<=2022,]
-        if(i==1 & j==1 & k==1)
-        {
-          theResult<-df_modified
+    for (j in 1:length(threshold)) {
+      for (k in 1:length(influence)) {
+        # Run the spike detection algorithm
+        result <- ThresholdingAlgo2(y, lag[i], threshold[j], influence[k])
+        
+        # Prepare the results in a dataframe
+        df <- data.frame(
+          date = date,
+          year = years,
+          y = y,
+          avgFilter = result$avgFilter,
+          upperThreshold = result$avgFilter + threshold[j] * result$stdFilter,
+          signals = result$signals,
+          spikes = result$spikes,
+          dips = result$dips
+        )
+        
+        # Add the difference between deaths and the moving average
+        df$y_minus_avgFilter <- df$y - df$avgFilter
+        
+        df_modified <- df %>%
+          summarise(
+            total_days = n(),  # Total days in the data
+            spike_days = sum(signals == 1),  # Days identified as spikes
+            total_deaths = sum(y),  # Total deaths in the data
+            deaths_in_spikes = sum(spikes),  # Total deaths during spikes
+            avg_diff_in_spikes = mean(y_minus_avgFilter[signals == 1], na.rm = TRUE)  # Average difference for spike days
+          ) %>%
+          mutate(
+            perc_spike_days = (spike_days / total_days) * 100,  # Percentage of days identified as spikes
+            perc_spike_deaths = (deaths_in_spikes / total_deaths) * 100  # Percentage of deaths in spikes
+          )
+        
+        # Add the parameters used
+        df_modified$lag <- lag[i]
+        df_modified$threshold <- threshold[j]
+        df_modified$influence <- influence[k]
+        
+        # Combine results
+        if (is.null(theResult)) {
+          theResult <- df_modified
+        } else {
+          theResult <- bind_rows(theResult, df_modified)
         }
-        else
-        {
-          theResult<-rbind(theResult,df_modified)
-        }   
       }
     }
-    Sys.sleep(1 / 100)
   }
   
-   return(theResult)
-  
+  return(theResult)
 }
 
-sensAnalysisYearDays<-sens_analysis_year_days(daily_overdose_deaths_ma, lag, threshold, influence)
+daily_overdose_deaths_ma_filtered <- daily_overdose_deaths_ma %>%
+  filter(YOD >= 2018 & YOD <= 2023)
+
+# Run the sensitivity analysis
+sensAnalysis_all_years <- sens_analysis_all_years(daily_overdose_deaths_ma_filtered, lag, threshold, influence)
 ```
