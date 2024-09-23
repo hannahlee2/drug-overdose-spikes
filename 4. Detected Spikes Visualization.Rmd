@@ -16,10 +16,8 @@ library(cowplot)
 setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
 ```
 
-```{r}
-library(ggplot2)
-library(dplyr)
 
+```{r}
 createPlot <- function(data, threshold, lag_days, show_y_axis = TRUE) {
   # Filter the data based on the threshold and specific lag
   theData <- data[data$threshold == threshold & data$lag == lag_days,]
@@ -33,20 +31,21 @@ createPlot <- function(data, threshold, lag_days, show_y_axis = TRUE) {
     filter(year(date) == 2022, month(date) %in% c(11,12))
   
   plot <- ggplot(filtered_data, aes(x = date)) +
-    geom_line(aes(y = y, color = 'Observed Counts')) +
-    geom_line(aes(y = avgFilter, color = 'Moving Average')) +
-    geom_line(aes(y = upperThreshold, color = 'Upper Bound')) +
+    geom_line(aes(y = y, color = 'Observed Counts'), size = 0.7) +
+    geom_line(aes(y = avgFilter, color = 'Moving Average'), size = 0.7) +
+    geom_line(aes(y = upperThreshold, color = 'Upper Bound'), size = 0.7) +
     geom_point(aes(y = spikes, color = 'Spike'), size = 2) +
     theme_minimal() +
     theme(legend.position = "none",
           axis.title.x = element_text(margin = margin(t = 10, unit = "pt")),
           axis.title.y = element_text(margin = margin(r = 10, unit = "pt"))) +
     scale_color_manual(name = "",
-                       labels = c('Observed Counts', 'Moving Average', 'Upper Bound', 'Spike'),
+                       
                        values = c('Observed Counts' = "grey", 
                                   'Moving Average' = "lightseagreen", 
-                                  'Upper Bound' = "#9DC183",  
-                                  'Spike' = "red")) +
+                                  'Spike' = "red",
+                                  'Upper Bound' = "#9DC183"  
+                                  )) +
     labs(
       title = paste(lag_days, "-day lag", sep=""),
       x = "Date",
@@ -74,10 +73,11 @@ lags <- c(7, 30, 90)
 show_y_axis_settings <- c(TRUE, FALSE, FALSE) # Control display of y-axis for each plot
 threshold <- 2  
 
-# Create plots with specific settings
+# Create plots with specific settings (influence will be 0.3 only)
 plots <- Map(function(lag, show_y) {
     createPlot(sensAnalysisYearDays, threshold, lag, show_y)
 }, lags, show_y_axis_settings)
+
 
 # Extract the legend from the first plot
 legend <- get_legend(plots[[1]] + theme(legend.position = "bottom"))
@@ -88,6 +88,5 @@ combined_plots <- plot_grid(plotlist = plots, align = 'v', nrow = 1, labels = "a
 detected_spikes <- plot_grid(combined_plots, legend, ncol = 1, rel_heights = c(1, 0.1))
 print(detected_spikes)
 
-ggsave("detected_spikes.jpeg", plot = detected_spikes, width = 15, height = 6, dpi = 1000)
+ggsave("detected_spikes.jpeg", plot = detected_spikes, width = 10, height = 6, dpi = 1000)
 ```
-
