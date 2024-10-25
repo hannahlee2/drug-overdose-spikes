@@ -13,6 +13,9 @@ knitr::opts_knit$set(root.dir = '.')
 library(dplyr)
 library(ggplot2)
 library(cowplot)
+library(extrafont)
+
+font_import()
 setwd("/Users/Hannah/Documents/R/Mass-Vital-Statistics")
 ```
 
@@ -22,50 +25,71 @@ createPlot <- function(data, threshold, lag_days, show_y_axis = TRUE) {
   # Filter the data based on the threshold and specific lag
   theData <- data[data$threshold == threshold & data$lag == lag_days,]
 
-  # adding this because in our algorithm, the avgfilter and stdfilter of 'i' corresponds to 'i-1', so for presentation, we must adjust the rows
+  # In our algorithm, the avgfilter and stdfilter of 'i' corresponds to 'i-1', so for presentation, we must adjust the rows
   theData$avgFilter <- c(NA, theData$avgFilter[1:(nrow(theData) - 1)])
   theData$upperThreshold <- c(NA, theData$upperThreshold[1:(nrow(theData) - 1)])
-  theData$spikes<-ifelse(theData$spikes>0,theData$spikes,NA)
+  theData$spikes <- ifelse(theData$spikes > 0, theData$spikes, NA)
+  
   # Filter for specific months and year
   filtered_data <- theData %>%
-    filter(year(date) == 2022, month(date) %in% c(11,12))
+    filter(year(date) == 2022, month(date) %in% c(11, 12))
   
+  # Create the plot
   plot <- ggplot(filtered_data, aes(x = date)) +
-    geom_line(aes(y = y, color = 'Observed Counts'), size = 0.7) +
-    geom_line(aes(y = avgFilter, color = 'Moving Average'), size = 0.7) +
-    geom_line(aes(y = upperThreshold, color = 'Upper Bound'), size = 0.7) +
+    geom_line(aes(y = y, color = 'Observed counts'), size = 0.7) +
+    geom_line(aes(y = avgFilter, color = 'Moving average'), size = 0.7) +
+    geom_line(aes(y = upperThreshold, color = 'Upper bound'), size = 0.7) +
     geom_point(aes(y = spikes, color = 'Spike'), size = 2) +
+    
+    # Set theme with consistent font, color, and size
     theme_minimal() +
-    theme(legend.position = "none",
-          axis.title.x = element_text(margin = margin(t = 10, unit = "pt")),
-          axis.title.y = element_text(margin = margin(r = 10, unit = "pt"))) +
-    scale_color_manual(name = "",
-                       
-                       values = c('Observed Counts' = "grey", 
-                                  'Moving Average' = "lightseagreen", 
-                                  'Spike' = "red",
-                                  'Upper Bound' = "#9DC183"  
-                                  )) +
+    theme(
+      legend.position = "none",
+      axis.title.x = element_text(margin = margin(t = 10, unit = "pt")),
+      axis.title.y = element_text(margin = margin(r = 10, unit = "pt")),
+      plot.title = element_text(family = "Arial", color = "black", size = 12),  # Optional: bold title
+      axis.text.x = element_text(family = "Arial", color = "black", size = 12),  # X-axis text
+      axis.text.y = element_text(family = "Arial", color = "black", size = 12),  # Y-axis text
+      
+    ) +
+    scale_color_manual(
+      name = "",
+      values = c(
+        'Observed counts' = "#e4e1e3",
+        'Moving average' = "#b5006b",
+        'Spike' = "#f6222e",
+        'Upper bound' = "#feaf16"
+      )
+    ) +
+    scale_x_date(
+      date_labels = "%b %e", 
+       expand = expansion(mult = c(0.07, 0.07))  # Adds 5% padding on both sides
+  
+    ) +
     labs(
-      title = paste(lag_days, "-day lag", sep=""),
-      x = "Date",
-      y = ifelse(show_y_axis, "Overdose Deaths", "")
-    ) + 
+      title = paste(lag_days, "-Day lag", sep = ""),
+      x = "2022",
+      y = ifelse(show_y_axis, "No. of overdose deaths", "")
+    ) +
     scale_y_continuous(
       breaks = seq(0, 15, 3),
       limits = c(-0.5, 15),
-      expand = c(0, 0)  
+      expand = c(0, 0)
     )
+  
   # Conditionally remove y-axis and y-title
   if (!show_y_axis) {
     plot <- plot +
-      theme(axis.text.y = element_blank(),
-            axis.ticks.y = element_blank(),
-            axis.title.y = element_blank())
+      theme(
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank()
+      )
   }
-  
+
   return(plot)
 }
+
 ```
 
 ```{r}
@@ -79,14 +103,14 @@ plots <- Map(function(lag, show_y) {
 }, lags, show_y_axis_settings)
 
 
-# Extract the legend from the first plot
+# Extract the legend from the first plot (requires older version of ggplot)
 legend <- get_legend(plots[[1]] + theme(legend.position = "bottom"))
 
 # Combine plots horizontally without the legends
-combined_plots <- plot_grid(plotlist = plots, align = 'v', nrow = 1, labels = "auto")
+combined_plots <- plot_grid(plotlist = plots, align = 'v', nrow = 1, labels = LETTERS[1:3])
 
 detected_spikes <- plot_grid(combined_plots, legend, ncol = 1, rel_heights = c(1, 0.1))
 print(detected_spikes)
 
-ggsave("detected_spikes.jpeg", plot = detected_spikes, width = 10, height = 6, dpi = 1000)
+ggsave("detected_spikes.jpeg", plot = detected_spikes, width = 10, height = 5, dpi = 1000)
 ```
